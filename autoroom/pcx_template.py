@@ -1,8 +1,5 @@
 """A simple template engine, safe for untrusted user templates."""
 
-from contextlib import suppress
-from typing import Any
-
 from pyparsing import (
     Keyword,
     Literal,
@@ -21,10 +18,7 @@ __author__ = "PhasecoreX"
 
 
 class Template:
-    """A simple template engine, safe for untrusted user templates."""
-
-    def __init__(self) -> None:
-        """Set up the parser."""
+    def __init__(self):
         ParserElement.enablePackrat()
 
         expression_l = Suppress("{{")
@@ -95,25 +89,27 @@ class Template:
         self.template_parser = template.parseWithTabs()
 
     @staticmethod
-    def _get_value(key: Any, data: dict[str, Any]) -> Any:  # noqa: ANN401
+    def _get_value(key, data):
         if not isinstance(key, str):
             return key
         if len(key) > 1 and key[0] in ('"', "'") and key[0] == key[-1]:
             return key[1:-1]
-        with suppress(KeyError):
+        try:
             for attr in key.split("."):
                 data = data[attr]
             return data
+        except KeyError:
+            pass
         return ""
 
-    def _evaluate(self, condition: Any, data: dict[str, Any]) -> Any:  # noqa: ANN401
+    def _evaluate(self, condition, data):
         # Base case
         if not isinstance(condition, ParseResults):
             return self._get_value(condition, data)
         # Not
         if condition[0] == "not":
             return not self._evaluate(condition[1], data)
-        # And/Or, rhs could be ignored if short-circuiting
+        # And/Or, rhs could be ignored if short circuiting
         lhs = self._evaluate(condition[0], data)
         if condition[1] == "and":
             return lhs and self._evaluate(condition[2], data)
@@ -121,8 +117,9 @@ class Template:
             return lhs or self._evaluate(condition[2], data)
         # rhs is now required
         rhs = self._evaluate(condition[2], data)
-        if not lhs and isinstance(rhs, int | float):
-            lhs = 0
+        if not lhs:
+            if isinstance(rhs, int) or isinstance(rhs, float):
+                lhs = 0
         if condition[1] == "==":
             return lhs == rhs
         if condition[1] == ">=":
@@ -138,7 +135,7 @@ class Template:
         return False
 
     @staticmethod
-    def _statement_result_append(result: str | None, to_append: str) -> str:
+    def _statement_result_append(result, to_append):
         if not result:
             result = ""
         if (
@@ -160,82 +157,57 @@ class Template:
         ):
             result = result.rstrip(" \t")
             to_append = to_append.lstrip(" \t")
-            to_append = to_append[2:] if to_append.startswith("\r\n") else to_append[1:]
+            if to_append.startswith("\r\n"):
+                to_append = to_append[2:]
+            else:
+                to_append = to_append[1:]
         return result + to_append
 
-    def render(self, template: str = "", data: dict[str, Any] | None = None) -> str:
-        """Render a template with the given data."""
+    def render(self, template="", data=None):
         if data is None:
             data = {}
         result = ""
         current_index = 0
-        # stack keeps track of if the previous check was true, and thus are printing
-        stack: list[tuple[str, Any]] = [("base", True)]
-        target_stack_height = len(stack)
+        stack = [("base", True)]
         potential_standalone = False
         tokens = self.template_parser.scanString(template)
         for token in tokens:
-            if len(stack) != target_stack_height:
-                # If we are in an if statement and already found what part to print (the true part),
-                # the target_stack_height will be lowered by 1. Don't print anything until we get the
-                # stack height back to this value.
-                stack[-1] = (stack[-1][0], False)
-
-            # Print logic
-            printing = stack[-1][1]  # last inserted element, second arg
+            printing = stack[-1][1]
             if token[1] != current_index and printing:
                 to_append = template[current_index : token[1]]
                 result = self._statement_result_append(result, to_append)
             potential_standalone = not result.rstrip(" \t") or result.rstrip(" \t")[
                 -1
             ] in ("\r", "\n")
-
             if "comment" in token:
                 pass
             elif "identifier" in token[0] and printing:
-                identifier_value = str(self._get_value(token[0].identifier, data))
-                if "filters" in token[0]:
-                    for filter_name in token[0]["filters"]:
-                        if filter_name == "lower":
-                            identifier_value = identifier_value.lower()
-                        elif filter_name == "upper":
-                            identifier_value = identifier_value.upper()
-                result += identifier_value
+                result += str(self._get_value(token[0].identifier, data))
                 potential_standalone = False
             elif token[0][0] == "if":
-                if len(stack) == target_stack_height:
-                    target_stack_height += 1
-                evaluate_result = self._evaluate(token[0][1], data)
-                stack.append(("if", evaluate_result))
+                stack.append(("if", self._evaluate(token[0][1], data) and stack[-1][1]))
             elif token[0][0] == "elif":
-                if stack[-1][0] not in ("if", "elif"):
-                    error_message = f"{token[0][0]!r} unexpected at position {token[1]}-{token[2]} (not in an if statement)"
-                    raise RuntimeError(error_message)
-                if len(stack) == target_stack_height:
-                    if stack[-1][
-                        1
-                    ]:  # Previous part of this if statement was true, so we are done with this if statement
-                        target_stack_height -= 1
-                    else:
-                        evaluate_result = self._evaluate(token[0][1], data)
-                        stack[-1] = ("elif", evaluate_result)
+                if stack[-1][0] == "base":
+                    raise RuntimeError(
+                        f"{token[0][0]!r} unexpected at position {token[1]}-{token[2]} (not in an if statement)"
+                    )
+                if not stack[-1][1]:
+                    stack[-1] = (
+                        "elif",
+                        self._evaluate(token[0][1], data) and stack[-2][1],
+                    )
             elif token[0][0] == "else":
-                if stack[-1][0] not in ("if", "elif"):
-                    error_message = f"{token[0][0]!r} unexpected at position {token[1]}-{token[2]} (not in an if statement)"
-                    raise RuntimeError(error_message)
-                if len(stack) == target_stack_height:
-                    if stack[-1][
-                        1
-                    ]:  # Previous part of this if statement was true, so we are done with this if statement
-                        target_stack_height -= 1
-                    else:
-                        stack[-1] = ("else", True)
+                if stack[-1][0] == "base":
+                    raise RuntimeError(
+                        f"{token[0][0]!r} unexpected at position {token[1]}-{token[2]} (not in an if statement)"
+                    )
+                if not stack[-1][1]:
+                    stack[-1] = ("else", stack[-2][1])
             elif token[0][0] == "endif":
-                if stack[-1][0] not in ("if", "elif", "else"):
-                    error_message = f"{token[0][0]!r} unexpected at position {token[1]}-{token[2]} (not in an if statement)"
-                    raise RuntimeError(error_message)
-                if len(stack) == target_stack_height:
-                    target_stack_height -= 1
+                if stack[-1][0] == "base":
+                    raise RuntimeError(
+                        f"{token[0][0]!r} unexpected at position {token[1]}-{token[2]} (not in an if statement)"
+                    )
                 del stack[-1]
             current_index = token[2]
         if current_index != len(template):
