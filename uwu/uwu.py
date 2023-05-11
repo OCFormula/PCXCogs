@@ -1,7 +1,5 @@
 """UwU cog for Red-DiscordBot by PhasecoreX."""
-# ruff: noqa: S311
 import random
-from contextlib import suppress
 
 import discord
 from redbot.core import commands
@@ -13,7 +11,7 @@ class UwU(commands.Cog):
     """UwU."""
 
     __author__ = "PhasecoreX"
-    __version__ = "2.1.0"
+    __version__ = "2.0.0"
 
     KAOMOJI_JOY = [
         " (\\* ^ ω ^)",
@@ -24,7 +22,7 @@ class UwU(commands.Cog):
         " xD",
     ]
     KAOMOJI_EMBARRASSED = [
-        " (/ />/ ▽ /</ /)..",
+        " (⁄ ⁄>⁄ ▽ ⁄<⁄ ⁄)..",
         " (\\*^.^\\*)..,",
         "..,",
         ",,,",
@@ -45,7 +43,9 @@ class UwU(commands.Cog):
         pre_processed = super().format_help_for_context(ctx)
         return f"{pre_processed}\n\nCog Version: {self.__version__}"
 
-    async def red_delete_data_for_user(self, *, _requester: str, _user_id: int) -> None:
+    async def red_delete_data_for_user(
+        self, **kwargs
+    ):  # pylint: disable=unused-argument
         """Nothing to delete."""
         return
 
@@ -54,20 +54,20 @@ class UwU(commands.Cog):
     #
 
     @commands.command(aliases=["owo"])
-    async def uwu(self, ctx: commands.Context, *, text: str | None = None) -> None:
+    async def uwu(self, ctx: commands.Context, *, text: str = None):
         """Uwuize the replied to message, previous message, or your own text."""
         if not text:
             if hasattr(ctx.message, "reference") and ctx.message.reference:
-                with suppress(
-                    discord.Forbidden, discord.NotFound, discord.HTTPException
-                ):
-                    message_id = ctx.message.reference.message_id
-                    if message_id:
-                        text = (await ctx.fetch_message(message_id)).content
+                try:
+                    text = (
+                        await ctx.fetch_message(ctx.message.reference.message_id)
+                    ).content
+                except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+                    pass
             if not text:
-                messages = [message async for message in ctx.channel.history(limit=2)]
-                # [0] is the command, [1] is the message before the command
-                text = messages[1].content or "I can't translate that!"
+                text = (await ctx.channel.history(limit=2).flatten())[
+                    1
+                ].content or "I can't translate that!"
         await type_message(
             ctx.channel,
             self.uwuize_string(text),
@@ -80,7 +80,7 @@ class UwU(commands.Cog):
     # Public methods
     #
 
-    def uwuize_string(self, string: str) -> str:
+    def uwuize_string(self, string: str):
         """Uwuize and return a string."""
         converted = ""
         current_word = ""
@@ -96,7 +96,7 @@ class UwU(commands.Cog):
             converted += self.uwuize_word(current_word)
         return converted
 
-    def uwuize_word(self, word: str) -> str:
+    def uwuize_word(self, word: str):
         """Uwuize and return a word.
 
         Thank you to the following for inspiration:
@@ -143,10 +143,20 @@ class UwU(commands.Cog):
         else:
             # Protect specific word endings from changes
             protected = ""
-            if uwu.endswith(("le", "ll", "er", "re")):
+            if (
+                uwu.endswith("le")
+                or uwu.endswith("ll")
+                or uwu.endswith("er")
+                or uwu.endswith("re")
+            ):
                 protected = uwu[-2:]
                 uwu = uwu[:-2]
-            elif uwu.endswith(("les", "lls", "ers", "res")):
+            elif (
+                uwu.endswith("les")
+                or uwu.endswith("lls")
+                or uwu.endswith("ers")
+                or uwu.endswith("res")
+            ):
                 protected = uwu[-3:]
                 uwu = uwu[:-3]
             # l -> w, r -> w, n<vowel> -> ny<vowel>, ove -> uv
@@ -162,14 +172,16 @@ class UwU(commands.Cog):
                 + protected
             )
 
+        # Add back punctuations
+        uwu += extra_punctuation + final_punctuation
+
         # Add occasional stutter
         if (
-            len(uwu) > 2  # noqa: PLR2004
+            len(uwu) > 2
             and uwu[0].isalpha()
             and "-" not in uwu
             and not random.randint(0, 6)
         ):
             uwu = f"{uwu[0]}-{uwu}"
 
-        # Add back punctuations and return
-        return uwu + extra_punctuation + final_punctuation
+        return uwu

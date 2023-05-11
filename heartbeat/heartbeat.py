@@ -1,14 +1,13 @@
 """Heartbeat cog for Red-DiscordBot by PhasecoreX."""
 import asyncio
-import datetime
 import logging
 from datetime import timedelta
 
 import aiohttp
-from redbot.core import Config, checks, commands
+from redbot.core import Config
 from redbot.core import __version__ as redbot_version
-from redbot.core.bot import Red
-from redbot.core.utils.chat_formatting import error, humanize_timedelta
+from redbot.core import checks, commands
+from redbot.core.utils.chat_formatting import humanize_timedelta
 
 from .pcx_lib import SettingDisplay, checkmark, delete
 
@@ -17,11 +16,9 @@ user_agent = (
 )
 log = logging.getLogger("red.pcxcogs.heartbeat")
 
-MIN_HEARTBEAT_SECONDS = 60.0
-
 
 class Heartbeat(commands.Cog):
-    """Monitor the uptime of your bot.
+    """Monitor your bots uptime.
 
     The bot owner can specify a URL that the bot will ping (send a GET request)
     at a configurable frequency. Using this with an uptime tracking service can
@@ -30,11 +27,11 @@ class Heartbeat(commands.Cog):
     """
 
     __author__ = "PhasecoreX"
-    __version__ = "1.4.0"
+    __version__ = "1.1.0"
 
     default_global_settings = {"url": "", "frequency": 60}
 
-    def __init__(self, bot: Red) -> None:
+    def __init__(self, bot):
         """Set up the cog."""
         super().__init__()
         self.bot = bot
@@ -43,26 +40,26 @@ class Heartbeat(commands.Cog):
         )
         self.config.register_global(**self.default_global_settings)
         self.session = aiohttp.ClientSession()
-        self.current_error = None
-        self.next_heartbeat = datetime.datetime.now(datetime.UTC)
         self.bg_loop_task = None
 
     #
     # Red methods
     #
 
-    def cog_unload(self) -> None:
+    def cog_unload(self):
         """Clean up when cog shuts down."""
         if self.bg_loop_task:
             self.bg_loop_task.cancel()
-        _ = asyncio.create_task(self.session.close())
+        asyncio.create_task(self.session.close())
 
     def format_help_for_context(self, ctx: commands.Context) -> str:
         """Show version in help."""
         pre_processed = super().format_help_for_context(ctx)
         return f"{pre_processed}\n\nCog Version: {self.__version__}"
 
-    async def red_delete_data_for_user(self, *, _requester: str, _user_id: int) -> None:
+    async def red_delete_data_for_user(
+        self, **kwargs
+    ):  # pylint: disable=unused-argument
         """Nothing to delete."""
         return
 
@@ -70,7 +67,7 @@ class Heartbeat(commands.Cog):
     # Initialization methods
     #
 
-    async def initialize(self) -> None:
+    async def initialize(self):
         """Perform setup actions before loading cog."""
         self.enable_bg_loop()
 
@@ -78,77 +75,60 @@ class Heartbeat(commands.Cog):
     # Background loop methods
     #
 
-    def enable_bg_loop(self, *, skip_first: bool = False) -> None:
+    def enable_bg_loop(self):
         """Set up the background loop task."""
 
-        def error_handler(fut: asyncio.Future) -> None:
+        def error_handler(fut: asyncio.Future):
             try:
                 fut.result()
             except asyncio.CancelledError:
                 pass
-            except Exception as exc:
+            except Exception as exc:  # pylint: disable=broad-except
                 log.exception(
                     "Unexpected exception occurred in background loop of Heartbeat: ",
                     exc_info=exc,
                 )
-                _ = asyncio.create_task(
+                asyncio.create_task(
                     self.bot.send_to_owners(
-                        "An unexpected exception occurred in the background loop of Heartbeat:\n"
-                        f"```{str(exc)}```"
+                        "An unexpected exception occurred in the background loop of Heartbeat.\n"
                         "Heartbeat pings will not be sent until Heartbeat is reloaded.\n"
-                        "Check your console or logs for more details, and consider opening a bug report for this."
+                        "Check your console or logs for details, and consider opening a bug report for this."
                     )
                 )
 
         if self.bg_loop_task:
             self.bg_loop_task.cancel()
-        self.bg_loop_task = self.bot.loop.create_task(
-            self.bg_loop(skip_first=skip_first)
-        )
+        self.bg_loop_task = self.bot.loop.create_task(self.bg_loop())
         self.bg_loop_task.add_done_callback(error_handler)
 
-    async def bg_loop(self, *, skip_first: bool) -> None:
+    async def bg_loop(self):
         """Background loop."""
         await self.bot.wait_until_ready()
-        url = await self.config.url()
-        if not url:
-            return
         frequency = await self.config.frequency()
-        if frequency < MIN_HEARTBEAT_SECONDS:
-            frequency = MIN_HEARTBEAT_SECONDS
-        if not skip_first:
-            self.current_error = await self.send_heartbeat(url)
+        if frequency < 60:
+            frequency = 60.0
         while True:
-            self.next_heartbeat = datetime.datetime.now(
-                datetime.UTC
-            ) + datetime.timedelta(0, frequency)
+            await self.send_heartbeat()
             await asyncio.sleep(frequency)
-            self.current_error = await self.send_heartbeat(url)
 
-    async def send_heartbeat(self, url: str) -> str | None:
-        """Send a heartbeat ping.
-
-        Returns error message if error, None otherwise
-        """
-        if not url:
-            return "No URL supplied"
-        last_exception = None
-        retries = 3
-        while retries > 0:
-            try:
-                await self.session.get(
-                    url,
-                    headers={"user-agent": user_agent},
-                )
-            except (
-                aiohttp.ClientConnectionError,
-                asyncio.TimeoutError,
-            ) as exc:
-                last_exception = exc
-            else:
-                return None
-            retries -= 1
-        return str(last_exception)
+    async def send_heartbeat(self):
+        """Send a heartbeat ping."""
+        url = await self.config.url()
+        if url:
+            retries = 3
+            while retries > 0:
+                try:
+                    await self.session.get(
+                        url,
+                        headers={"user-agent": user_agent},
+                    )
+                    break
+                except (
+                    aiohttp.ClientConnectionError,
+                    asyncio.TimeoutError,
+                ):
+                    pass
+                retries -= 1
 
     #
     # Command methods: heartbeat
@@ -156,64 +136,29 @@ class Heartbeat(commands.Cog):
 
     @commands.group()
     @checks.is_owner()
-    async def heartbeat(self, ctx: commands.Context) -> None:
+    async def heartbeat(self, ctx: commands.Context):
         """Manage Heartbeat settings."""
 
     @heartbeat.command()
-    async def settings(self, ctx: commands.Context) -> None:
+    async def settings(self, ctx: commands.Context):
         """Display current settings."""
         global_section = SettingDisplay("Global Settings")
-        heartbeat_status = "Disabled (no URL set)"
-        if self.bg_loop_task and not self.bg_loop_task.done():
-            heartbeat_status = "Enabled"
-        elif await self.config.url():
-            heartbeat_status = "Disabled (faulty URL)"
-        global_section.add("Heartbeat", heartbeat_status)
+        global_section.add(
+            "Heartbeat",
+            "Enabled" if await self.config.url() else "Disabled (no URL set)",
+        )
         global_section.add(
             "Frequency", humanize_timedelta(seconds=await self.config.frequency())
         )
-        if self.bg_loop_task and not self.bg_loop_task.done():
-            global_section.add(
-                "Next heartbeat in",
-                humanize_timedelta(
-                    timedelta=self.next_heartbeat - datetime.datetime.now(datetime.UTC)
-                )
-                or "0 seconds",
-            )
-        if self.current_error:
-            global_section.add("Current error", self.current_error)
         await ctx.send(str(global_section))
 
     @heartbeat.command()
-    async def url(self, ctx: commands.Context, url: str) -> None:
+    async def url(self, ctx: commands.Context, url: str):
         """Set the URL Heartbeat will send pings to."""
         await delete(ctx.message)
-        try:
-            error_message = await self.send_heartbeat(url)
-            if not error_message:
-                await self.config.url.set(url)
-                self.enable_bg_loop(skip_first=True)
-                await ctx.send(checkmark("Heartbeat URL has been set and enabled."))
-                return
-        except Exception as ex:  # noqa: BLE001
-            error_message = str(ex)
-        previous_url_text = (
-            "I will continue to use the previous URL instead."
-            if await self.config.url()
-            else ""
-        )
-        await ctx.send(
-            error(
-                f"Something seems to be wrong with that URL, I am not able to connect to it:\n```{error_message}```{previous_url_text}"
-            )
-        )
-
-    @heartbeat.command()
-    async def disable(self, ctx: commands.Context) -> None:
-        """Remove the set URL and disable Heartbeat pings."""
-        await self.config.url.clear()
+        await self.config.url.set(url)
+        await ctx.send(checkmark("Heartbeat URL has been set and enabled."))
         self.enable_bg_loop()
-        await ctx.send(checkmark("Heartbeat has been disabled."))
 
     @heartbeat.command()
     async def frequency(
@@ -222,9 +167,9 @@ class Heartbeat(commands.Cog):
         frequency: commands.TimedeltaConverter(
             minimum=timedelta(seconds=60),
             maximum=timedelta(days=30),
-            default_unit="seconds",
+            default_unit="seconds",  # noqa: F821
         ),
-    ) -> None:
+    ):
         """Set the frequency Heartbeat will send pings."""
         await self.config.frequency.set(frequency.total_seconds())
         await ctx.send(

@@ -9,9 +9,9 @@ class LookupResult:
         service: str,
         result: str,
         *,
-        reason: str | None = None,
-        proof_url: str | None = None,
-    ) -> None:
+        reason: str = "",
+        proof_url: str = "",
+    ):
         """Create the base lookup result."""
         self.service = service
         self.result = result

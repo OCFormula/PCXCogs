@@ -1,32 +1,27 @@
 """Dice cog for Red-DiscordBot by PhasecoreX."""
 import asyncio
 import re
-from contextlib import suppress
 
 import pyhedrals
 from redbot.core import Config, checks, commands
-from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import error, question
 from redbot.core.utils.predicates import MessagePredicate
 
 from .pcx_lib import SettingDisplay, checkmark
-
-MAX_ROLLS_NOTIFY = 1000000
-MAX_MESSAGE_LENGTH = 2000
 
 
 class Dice(commands.Cog):
     """Perform complex dice rolling."""
 
     __author__ = "PhasecoreX"
-    __version__ = "2.1.0"
+    __version__ = "2.0.0"
 
     default_global_settings = {"max_dice_rolls": 10000, "max_die_sides": 10000}
     DROPPED_EXPLODED_RE = re.compile(r"-\*(\d+)\*-")
     EXPLODED_RE = re.compile(r"\*(\d+)\*")
     DROPPED_RE = re.compile(r"-(\d+)-")
 
-    def __init__(self, bot: Red) -> None:
+    def __init__(self, bot):
         """Set up the cog."""
         super().__init__()
         self.bot = bot
@@ -44,7 +39,9 @@ class Dice(commands.Cog):
         pre_processed = super().format_help_for_context(ctx)
         return f"{pre_processed}\n\nCog Version: {self.__version__}"
 
-    async def red_delete_data_for_user(self, *, _requester: str, _user_id: int) -> None:
+    async def red_delete_data_for_user(
+        self, **kwargs
+    ):  # pylint: disable=unused-argument
         """Nothing to delete."""
         return
 
@@ -54,11 +51,11 @@ class Dice(commands.Cog):
 
     @commands.group()
     @checks.is_owner()
-    async def diceset(self, ctx: commands.Context) -> None:
+    async def diceset(self, ctx: commands.Context):
         """Manage Dice settings."""
 
     @diceset.command()
-    async def settings(self, ctx: commands.Context) -> None:
+    async def settings(self, ctx: commands.Context):
         """Display current settings."""
         global_section = SettingDisplay("Global Settings")
         global_section.add(
@@ -68,13 +65,11 @@ class Dice(commands.Cog):
         await ctx.send(str(global_section))
 
     @diceset.command()
-    async def rolls(self, ctx: commands.Context, maximum: int) -> None:
+    async def rolls(self, ctx: commands.Context, maximum: int):
         """Set the maximum number of dice a user can roll at one time.
 
         More formally, the maximum number of random numbers the bot will generate for any one dice calculation.
-
-        Warning:
-        -------
+        WARNING:
         Setting this too high will allow other users to slow down/freeze/crash your bot!
         Generating random numbers is easily the most CPU consuming process here,
         so keep this number low (less than one million, and way less than that on a Pi)
@@ -82,7 +77,7 @@ class Dice(commands.Cog):
         action = "is already set at"
         if maximum == await self.config.max_dice_rolls():
             pass
-        elif maximum > MAX_ROLLS_NOTIFY:
+        elif maximum > 1000000:
             pred = MessagePredicate.yes_or_no(ctx)
             await ctx.send(
                 question(
@@ -90,8 +85,10 @@ class Dice(commands.Cog):
                     "Setting this over one million will allow other users to slow down/freeze/crash your bot!"
                 )
             )
-            with suppress(asyncio.TimeoutError):
+            try:
                 await ctx.bot.wait_for("message", check=pred, timeout=30)
+            except asyncio.TimeoutError:
+                pass
             if pred.result:
                 await self.config.max_dice_rolls.set(maximum)
                 action = "is now set to"
@@ -113,7 +110,7 @@ class Dice(commands.Cog):
         )
 
     @diceset.command()
-    async def sides(self, ctx: commands.Context, maximum: int) -> None:
+    async def sides(self, ctx: commands.Context, maximum: int):
         """Set the maximum number of sides a die can have.
 
         Python seems to be pretty good at generating huge random numbers and doing math on them.
@@ -132,7 +129,7 @@ class Dice(commands.Cog):
     #
 
     @commands.command()
-    async def dice(self, ctx: commands.Context, *, roll: str) -> None:
+    async def dice(self, ctx: commands.Context, *, roll: str):
         """Perform die roll based on a dice formula.
 
         The [PyHedrals](https://github.com/StarlitGhost/pyhedrals) library is used for dice formula parsing.
@@ -153,21 +150,14 @@ class Dice(commands.Cog):
             )
             result = dice_roller.parse(roll)
             roll_message = f"\N{GAME DIE} {ctx.message.author.mention} rolled {roll} and got **{result.result}**"
-            if len(roll_message) > MAX_MESSAGE_LENGTH:
-                roll_message = f"\N{GAME DIE} {ctx.message.author.mention} rolled that and got **{result.result}**"
-            if len(roll_message) > MAX_MESSAGE_LENGTH:
-                await ctx.send(
-                    error(
-                        f"{ctx.message.author.mention}, I can't give you the result of that roll as it doesn't fit in a Discord message"
-                    )
-                )
-                return
+            if len(roll_message) > 2000:
+                raise ValueError("resulting roll message is too big to send in Discord")
             roll_log = "\n".join(result.strings())
             roll_log = self.DROPPED_EXPLODED_RE.sub(r"~~**\1!**~~", roll_log)
             roll_log = self.EXPLODED_RE.sub(r"**\1!**", roll_log)
             roll_log = self.DROPPED_RE.sub(r"~~\1~~", roll_log)
             roll_log = roll_log.replace(",", ", ")
-            if len(roll_message) + len(roll_log) > MAX_MESSAGE_LENGTH:
+            if len(roll_message) + len(roll_log) > 2000:
                 roll_log = "*(Roll log too long to display)*"
             await ctx.send(f"{roll_message}\n{roll_log}")
         except (

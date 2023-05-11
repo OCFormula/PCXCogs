@@ -4,13 +4,13 @@ This cog allows server admins to check their members against multiple external b
 
 ## For Bot Owners - `[p]banchecksetglobal`
 
-There are certain ban list APIs that can only be set up for the entire bot (instead of per server). Usually this is due to the fact that your bot needs to go through a verification process before you get an API key, and only one key per bot is issued. At the time of writing, [Ravy](https://ravy.org/api) is the only one that does this. Once you set the API key, the ban list checking functionality for that service will be available for use in all servers your bot is a part of. The admins of the servers will need to manually enable the service for checking, however.
+There are certain ban list APIs that can only be set up for the entire bot (instead of per server). Usually this is due to the fact that your bot needs to go through a verification process before you get an API key, and only one key per bot is issued. At the time of writing, [KSoft.Si](https://api.ksoft.si/) is the only one that does this. Once you set the API key, the ban list checking functionality for that service will be available for use in all servers your bot is a part of. The admins of the servers will need to manually enable the service for checking, however.
 
 ```
 [p]banchecksetglobal settings
 ```
 
-Using this command will list all the bot-wide ban list services that are supported. Clicking the link will bring you to that services website, where you can apply for an API key. Once you have an API key, you can check `[p]banchecksetglobal api <service_name>` for info on how to set the API. Once you have set the API correctly, you can again check `[p]banchecksetglobal settings` and see that your service is set.
+Using this command will list all of the bot-wide ban list services that are supported. Clicking the link will bring you to that services website, where you can apply for an API key. Once you have an API key, you can check `[p]banchecksetglobal api <service_name>` for info on how to set the API. Once you have set the API correctly, you can again check `[p]banchecksetglobal settings` and see that your service is set.
 
 That's all the setup you need to do for these services. To actually use these services, see below.
 

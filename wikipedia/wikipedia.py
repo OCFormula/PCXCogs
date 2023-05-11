@@ -1,7 +1,5 @@
 """Wikipedia cog for Red-DiscordBot ported by PhasecoreX."""
 import re
-from contextlib import suppress
-from typing import Any
 
 import aiohttp
 import discord
@@ -11,14 +9,12 @@ from redbot.core import commands
 from redbot.core.utils.chat_formatting import error, warning
 from redbot.core.utils.menus import DEFAULT_CONTROLS, menu
 
-MAX_DESCRIPTION_LENGTH = 1000
-
 
 class Wikipedia(commands.Cog):
     """Look up stuff on Wikipedia."""
 
     __author__ = "PhasecoreX"
-    __version__ = "3.1.0"
+    __version__ = "3.0.0"
 
     DISAMBIGUATION_CAT = "Category:All disambiguation pages"
     WHITESPACE = re.compile(r"[\n\s]{4,}")
@@ -33,7 +29,9 @@ class Wikipedia(commands.Cog):
         pre_processed = super().format_help_for_context(ctx)
         return f"{pre_processed}\n\nCog Version: {self.__version__}"
 
-    async def red_delete_data_for_user(self, *, _requester: str, _user_id: int) -> None:
+    async def red_delete_data_for_user(
+        self, **kwargs
+    ):  # pylint: disable=unused-argument
         """Nothing to delete."""
         return
 
@@ -42,19 +40,13 @@ class Wikipedia(commands.Cog):
     #
 
     @commands.command(aliases=["wiki"])
-    async def wikipedia(self, ctx: commands.Context, *, query: str) -> None:
+    async def wikipedia(self, ctx: commands.Context, *, query: str):
         """Get information from Wikipedia."""
-        can_not_embed_links = False
-        can_not_add_reactions = False
-        can_not_read_history = False
-        if isinstance(ctx.me, discord.Member):
-            can_not_embed_links = not ctx.channel.permissions_for(ctx.me).embed_links
-            can_not_add_reactions = not ctx.channel.permissions_for(
-                ctx.me
-            ).add_reactions
-            can_not_read_history = not ctx.channel.permissions_for(
-                ctx.me
-            ).read_message_history
+        can_not_embed_links = not ctx.channel.permissions_for(ctx.me).embed_links
+        can_not_add_reactions = not ctx.channel.permissions_for(ctx.me).add_reactions
+        can_not_read_history = not ctx.channel.permissions_for(
+            ctx.me
+        ).read_message_history
         only_first_result = (
             can_not_embed_links or can_not_add_reactions or can_not_read_history
         )
@@ -97,10 +89,10 @@ class Wikipedia(commands.Cog):
     # Public methods
     #
 
-    def generate_payload(self, query: str) -> dict[str, str]:
+    def generate_payload(self, query: str):
         """Generate the payload for Wikipedia based on a query string."""
         query_tokens = query.split()
-        return {
+        payload = {
             # Main module
             "action": "query",  # Fetch data from and about MediaWiki
             "format": "json",  # Output data in JSON format
@@ -124,10 +116,9 @@ class Wikipedia(commands.Cog):
             # action:query/prop:revisions options
             "clcategories": self.DISAMBIGUATION_CAT,  # Only list this category
         }
+        return payload
 
-    async def perform_search(
-        self, query: str, *, only_first_result: bool = False
-    ) -> tuple[list[discord.Embed], str | None]:
+    async def perform_search(self, query, only_first_result: bool = False):
         """Query Wikipedia."""
         payload = self.generate_payload(query)
         async with aiohttp.ClientSession() as session:
@@ -144,7 +135,7 @@ class Wikipedia(commands.Cog):
                 key=lambda unsorted_page: unsorted_page["index"]
             )
             for page in result["query"]["pages"]:
-                with suppress(KeyError):
+                try:
                     if (
                         "categories" in page
                         and page["categories"]
@@ -155,9 +146,11 @@ class Wikipedia(commands.Cog):
                     embeds.append(self.generate_embed(page))
                     if only_first_result:
                         return embeds, page["fullurl"]
+                except KeyError:
+                    pass
         return embeds, None
 
-    def generate_embed(self, page_json: dict[str, Any]) -> discord.Embed:
+    def generate_embed(self, page_json):
         """Generate the embed for the json page."""
         title = page_json["title"]
         description: str = page_json["extract"].strip()
@@ -182,8 +175,8 @@ class Wikipedia(commands.Cog):
         if whitespace_location:
             description = description[:whitespace_location].strip()
         description = self.NEWLINES.sub("\n\n", description)
-        if len(description) > MAX_DESCRIPTION_LENGTH or whitespace_location:
-            description = description[:MAX_DESCRIPTION_LENGTH].strip()
+        if len(description) > 1000 or whitespace_location:
+            description = description[:1000].strip()
             description += f"... [(read more)]({url})"
 
         embed = discord.Embed(

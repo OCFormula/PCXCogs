@@ -3,29 +3,28 @@ import re
 
 import discord
 from redbot.core import Config, checks, commands
-from redbot.core.bot import Red
 from redbot.core.utils.chat_formatting import info
 
 from .pcx_lib import SettingDisplay, checkmark, type_message
 
 
 class DecodeBinary(commands.Cog):
-    """Decodes binary strings to human-readable ones.
+    """Decodes binary strings to human readable ones.
 
     The bot will check every message sent by users for binary and try to
-    convert it to human-readable text. You can check that it is working
+    convert it to human readable text. You can check that it is working
     by sending this message in a channel:
 
     01011001011000010111100100100001
     """
 
     __author__ = "PhasecoreX"
-    __version__ = "1.2.0"
+    __version__ = "1.1.0"
 
     default_global_settings = {"schema_version": 0}
     default_guild_settings = {"ignored_channels": []}
 
-    def __init__(self, bot: Red) -> None:
+    def __init__(self, bot):
         """Set up the cog."""
         super().__init__()
         self.bot = bot
@@ -44,7 +43,9 @@ class DecodeBinary(commands.Cog):
         pre_processed = super().format_help_for_context(ctx)
         return f"{pre_processed}\n\nCog Version: {self.__version__}"
 
-    async def red_delete_data_for_user(self, *, _requester: str, _user_id: int) -> None:
+    async def red_delete_data_for_user(
+        self, **kwargs
+    ):  # pylint: disable=unused-argument
         """Nothing to delete."""
         return
 
@@ -52,11 +53,11 @@ class DecodeBinary(commands.Cog):
     # Initialization methods
     #
 
-    async def initialize(self) -> None:
+    async def initialize(self):
         """Perform setup actions before loading cog."""
         await self._migrate_config()
 
-    async def _migrate_config(self) -> None:
+    async def _migrate_config(self):
         """Perform some configuration migrations."""
         schema_version = await self.config.schema_version()
 
@@ -74,14 +75,12 @@ class DecodeBinary(commands.Cog):
     @commands.group()
     @commands.guild_only()
     @checks.admin_or_permissions(manage_guild=True)
-    async def decodebinaryset(self, ctx: commands.Context) -> None:
+    async def decodebinaryset(self, ctx: commands.Context):
         """Change DecodeBinary settings."""
 
     @decodebinaryset.command()
-    async def settings(self, ctx: commands.Context) -> None:
+    async def settings(self, ctx: commands.Context):
         """Display current settings."""
-        if not ctx.guild:
-            return
         ignored_channels = await self.config.guild(ctx.guild).ignored_channels()
         channel_section = SettingDisplay("Channel Settings")
         channel_section.add(
@@ -91,11 +90,11 @@ class DecodeBinary(commands.Cog):
         await ctx.send(str(channel_section))
 
     @decodebinaryset.group()
-    async def ignore(self, ctx: commands.Context) -> None:
+    async def ignore(self, ctx: commands.Context):
         """Change DecodeBinary ignore settings."""
 
     @ignore.command()
-    async def server(self, ctx: commands.Context) -> None:
+    async def server(self, ctx: commands.Context):
         """Ignore/Unignore the current server."""
         await ctx.send(
             info(
@@ -104,10 +103,8 @@ class DecodeBinary(commands.Cog):
         )
 
     @ignore.command()
-    async def channel(self, ctx: commands.Context) -> None:
+    async def channel(self, ctx: commands.Context):
         """Ignore/Unignore the current channel."""
-        if not ctx.guild:
-            return
         async with self.config.guild(ctx.guild).ignored_channels() as ignored_channels:
             if ctx.channel.id in ignored_channels:
                 ignored_channels.remove(ctx.channel.id)
@@ -121,7 +118,7 @@ class DecodeBinary(commands.Cog):
     #
 
     @commands.Cog.listener()
-    async def on_message_without_command(self, message: discord.Message) -> None:
+    async def on_message_without_command(self, message: discord.Message):
         """Grab messages and see if we can decode them from binary."""
         if message.guild is None:
             return
@@ -144,9 +141,7 @@ class DecodeBinary(commands.Cog):
     # Public methods
     #
 
-    async def do_translation(
-        self, orig_message: discord.Message, found: list[str]
-    ) -> None:
+    async def do_translation(self, orig_message: discord.Message, found):
         """Translate each found string and sends a message."""
         translated_messages = []
         for encoded in found:
@@ -182,7 +177,7 @@ class DecodeBinary(commands.Cog):
                 )
 
     @staticmethod
-    def decode_binary_string(string: str) -> str:
+    def decode_binary_string(string: str):
         """Convert a string of 1's, 0's, and spaces into an ascii string."""
         string = string.replace(" ", "")
         if len(string) % 8 != 0:
@@ -195,11 +190,10 @@ class DecodeBinary(commands.Cog):
         return ""
 
     @staticmethod
-    def is_ascii(string: str) -> bool:
+    def is_ascii(string: str):
         """Check if a string is fully ascii characters."""
         try:
             string.encode("ascii")
+            return True
         except UnicodeEncodeError:
             return False
-        else:
-            return True

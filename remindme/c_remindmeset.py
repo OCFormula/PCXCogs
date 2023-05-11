@@ -1,22 +1,20 @@
 """Commands for [p]remindmeset."""
-from abc import ABC
-
 from redbot.core import checks, commands
 
 from .abc import MixinMeta
 from .pcx_lib import SettingDisplay, checkmark
 
 
-class RemindMeSetCommands(MixinMeta, ABC):
+class RemindMeSetCommands(MixinMeta):
     """Commands for [p]remindmeset."""
 
     @commands.group()
     @checks.admin_or_permissions(manage_guild=True)
-    async def remindmeset(self, ctx: commands.Context) -> None:
+    async def remindmeset(self, ctx: commands.Context):
         """Manage RemindMe settings."""
 
     @remindmeset.command()
-    async def settings(self, ctx: commands.Context) -> None:
+    async def settings(self, ctx: commands.Context):
         """Display current settings."""
         server_section = SettingDisplay("Server Settings")
         if ctx.guild:
@@ -67,13 +65,11 @@ class RemindMeSetCommands(MixinMeta, ABC):
 
     @remindmeset.command()
     @commands.guild_only()
-    async def metoo(self, ctx: commands.Context) -> None:
+    async def metoo(self, ctx: commands.Context):
         """Toggle the bot asking if others want to be reminded in this server.
 
         If the bot doesn't have the Add Reactions permission in the channel, it won't ask regardless.
         """
-        if not ctx.guild:
-            return
         me_too = not await self.config.guild(ctx.guild).me_too()
         await self.config.guild(ctx.guild).me_too.set(me_too)
         await ctx.send(
@@ -82,9 +78,9 @@ class RemindMeSetCommands(MixinMeta, ABC):
             )
         )
 
-    @remindmeset.command(name="max")
+    @remindmeset.command()
     @checks.is_owner()
-    async def set_max(self, ctx: commands.Context, maximum: int) -> None:
+    async def max(self, ctx: commands.Context, maximum: int):
         """Global: Set the maximum number of reminders a user can create at one time."""
         await self.config.max_user_reminders.set(maximum)
         await ctx.send(
