@@ -1,6 +1,5 @@
 """The autoroom command."""
 import datetime
-from abc import ABC
 from typing import Dict, Union
 
 import discord
@@ -11,7 +10,7 @@ from .abc import MixinMeta
 from .pcx_lib import Perms, SettingDisplay, delete
 
 
-class AutoRoomCommands(MixinMeta, ABC):
+class AutoRoomCommands(MixinMeta):
     """The autoroom command."""
 
     @commands.group()
@@ -45,7 +44,7 @@ class AutoRoomCommands(MixinMeta, ABC):
                 "Server Managed",
             )
 
-        source_channel = ctx.guild.get_channel(autoroom_info["source_channel"])
+        source_channel = self.bot.get_channel(autoroom_info["source_channel"])
         if source_channel:
             member_roles = self.get_member_roles(source_channel)
 
@@ -139,7 +138,7 @@ class AutoRoomCommands(MixinMeta, ABC):
                 hint_text = error(
                     f"{ctx.message.author.mention}, you can only modify an AutoRoom name **{bucket.rate}** times "
                     f"every **{humanize_timedelta(seconds=per_display)}** with this command. "
-                    f"You can try again in **{humanize_timedelta(seconds=max(1, int(min(per_display, retry_after))))}**."
+                    f"You can try again in **{humanize_timedelta(seconds=max(1, min(per_display, retry_after)))}**."
                     "\n\n"
                     "Alternatively, you can modify the channel yourself by either right clicking the channel on "
                     "desktop or by long pressing it on mobile."
@@ -166,7 +165,7 @@ class AutoRoomCommands(MixinMeta, ABC):
         if not autoroom_info:
             return
 
-        bps = max(8000, min(int(ctx.guild.bitrate_limit), kbps * 1000))
+        bps = max(8000, min(ctx.guild.bitrate_limit, kbps * 1000))
         if bps != autoroom_channel.bitrate:
             await autoroom_channel.edit(
                 bitrate=bps, reason="AutoRoom: User edit room info"
@@ -229,10 +228,10 @@ class AutoRoomCommands(MixinMeta, ABC):
             ctx, self.perms_private, member_or_role=member_or_role
         ):
             channel = self._get_current_voice_channel(ctx.message.author)
-            if not channel or not channel.permissions_for(ctx.guild.me).move_members:
+            if not channel or not ctx.guild.me.permissions_in(channel).move_members:
                 return
             for member in channel.members:
-                if not channel.permissions_for(member).connect:
+                if not member.permissions_in(channel).connect:
                     await member.move_to(None, reason="AutoRoom: Deny user")
 
     async def _process_allow_deny(
@@ -258,7 +257,7 @@ class AutoRoomCommands(MixinMeta, ABC):
             await delete(hint, delay=10)
             return False
 
-        source_channel = ctx.guild.get_channel(autoroom_info["source_channel"])
+        source_channel = self.bot.get_channel(autoroom_info["source_channel"])
         if not source_channel:
             hint = await ctx.send(
                 error(
