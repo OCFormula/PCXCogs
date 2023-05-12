@@ -253,20 +253,23 @@ class AutoRoom(
                     ).clear_raw("member_roles")
             await self.config.schema_version.set(6)
 
-    async def _cleanup_autorooms(self):
+    async def _cleanup_autorooms(self) -> None:
         """Remove non-existent AutoRooms from the config."""
         await self.bot.wait_until_ready()
         voice_channel_dict = await self.config.all_channels()
         for voice_channel_id, voice_channel_settings in voice_channel_dict.items():
             voice_channel = self.bot.get_channel(voice_channel_id)
             if voice_channel:
-                await self._process_autoroom_delete(voice_channel)
+                if isinstance(voice_channel, discord.VoiceChannel):
+                    # Delete AutoRoom if it is empty
+                    await self._process_autoroom_delete(voice_channel)
             else:
+                # AutoRoom has already been deleted, clean up text channel if it still exists
                 text_channel = self.bot.get_channel(
                     voice_channel_settings["associated_text_channel"]
                 )
                 if (
-                    text_channel
+                    isinstance(text_channel, discord.abc.GuildChannel)
                     and text_channel.permissions_for(
                         text_channel.guild.me
                     ).manage_channels
@@ -315,10 +318,10 @@ class AutoRoom(
         if await self.bot.cog_disabled_in_guild(self, member.guild):
             return
         # If user left an AutoRoom, do cleanup
-        if await self.get_autoroom_info(leaving.channel):
-            if not await self._process_autoroom_delete(leaving.channel):
-                # AutoRoom wasn't deleted, so update text channel perms
-                await self._process_autoroom_text_perms(leaving.channel)
+        if isinstance(
+            leaving.channel, discord.VoiceChannel
+        ) and await self.get_autoroom_info(leaving.channel):
+            await self._process_autoroom_delete(leaving.channel)
         # If user entered an AutoRoom Source channel, create new AutoRoom
         asc = await self.get_autoroom_source_config(joining.channel)
         if asc:
