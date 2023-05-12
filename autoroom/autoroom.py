@@ -498,18 +498,16 @@ class AutoRoom(
                     pass  # User manually screwed with the template
 
     @staticmethod
-    async def _process_autoroom_delete(voice_channel: discord.VoiceChannel):
+    async def _process_autoroom_delete(voice_channel: discord.VoiceChannel) -> None:
         """Delete AutoRoom if empty."""
         if (
             not voice_channel.members
-            and voice_channel.guild.me.permissions_in(voice_channel).manage_channels
+            and voice_channel.permissions_for(voice_channel.guild.me).manage_channels
         ):
-            try:
+            with suppress(
+                discord.NotFound
+            ):  # Sometimes this happens when the user manually deletes their channel
                 await voice_channel.delete(reason="AutoRoom: Channel empty.")
-            except discord.NotFound:
-                pass  # Sometimes this happens when the user manually deletes their channel
-            return True
-        return False
 
     async def _process_autoroom_text_perms(self, autoroom: discord.VoiceChannel):
         """Allow or deny a user access to the text channel associated to an AutoRoom."""
