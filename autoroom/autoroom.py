@@ -1,5 +1,6 @@
 """AutoRoom cog for Red-DiscordBot by PhasecoreX."""
 from abc import ABC
+from contextlib import suppress
 from typing import Union
 
 import discord
